@@ -15,35 +15,52 @@
 
 set -euo pipefail
 
-if [[ "$(uname -s)" != "Darwin" ]]; then
+os_name="$(uname -s)"
+if [[ "${os_name}" != "Darwin" ]]
+then
   echo "Not macOS: no Mach-O install names to check."
   exit 0
 fi
 
 libexec="$(brew --prefix pixeltable/tap/pxt)/libexec"
-if [[ ! -d "$libexec" ]]; then
-  echo "error: $libexec not found. Install the formula first." >&2
+if [[ ! -d "${libexec}" ]]
+then
+  echo "error: ${libexec} not found. Install the formula first." >&2
   exit 1
 fi
 
 checked=0
 bad=0
 
-while IFS= read -r -d '' file; do
+while IFS= read -r -d '' file
+do
   checked=$((checked + 1))
-  while IFS= read -r install_name; do
-    case "$install_name" in
-      @rpath/* | /usr/lib/swift/*) continue ;;
+  while IFS= read -r install_name
+  do
+    case "${install_name}" in
+      @rpath/* | /usr/lib/swift/*)
+        continue
+        ;;
+      *)
+        echo "non-relocatable install name: ${install_name}"
+        echo "                          in: ${file#"${libexec}"/}"
+        bad=$((bad + 1))
+        ;;
     esac
-    echo "non-relocatable install name: ${install_name}"
-    echo "                          in: ${file#"${libexec}"/}"
-    bad=$((bad + 1))
-  done < <(otool -D "$file" 2>/dev/null | tail -n +2 | grep -v ':$' | grep -v '^[[:space:]]*$' || true)
-done < <(find "$libexec" \( -name '*.dylib' -o -name '*.so' \) -type f -print0)
+  done < <(otool -D "${file}" 2>/dev/null | tail -n +2 | grep -v ':$' | grep -v '^[[:space:]]*$' || true)
+done < <(find "${libexec}" \( -name '*.dylib' -o -name '*.so' \) -type f -print0 || true)
+
+# A silent `find` failure would otherwise read as a clean pass.
+if [[ "${checked}" -eq 0 ]]
+then
+  echo "error: found no Mach-O files under ${libexec}; the search failed." >&2
+  exit 1
+fi
 
 echo "Checked ${checked} Mach-O files under ${libexec}."
 
-if [[ "$bad" -ne 0 ]]; then
+if [[ "${bad}" -ne 0 ]]
+then
   cat >&2 <<'MSG'
 
 error: the install names above would be rewritten to long opt paths by Homebrew and

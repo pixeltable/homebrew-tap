@@ -31,9 +31,11 @@ jobs:
           brew install python@3.12 || true
           brew link --overwrite python@3.12 || true
 
-      - name: Verify Formula Style
+      # Style the tap, not just the formula: this also runs shellcheck and shfmt over
+      # scripts/, matching what `brew test-bot --only-tap-syntax` enforces in CI.
+      - name: Verify Tap Style
         run: |
-          brew style Formula/pxt.rb
+          brew style pixeltable/tap
 
       - name: Verify Livecheck
         run: |
@@ -92,13 +94,3 @@ jobs:
           # Cleanup
           pxt daemon stop -f || true
           rm -rf "$PIXELTABLE_HOME" "$TEST_DIR"
-
-  shellcheck:
-    name: Lint Shell Scripts
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Run ShellCheck
-        run: shellcheck scripts/*.sh

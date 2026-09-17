@@ -161,8 +161,10 @@ Maintainers can also interact with the tap automation directly:
 Run the following local checks in your clone of `pixeltable/homebrew-tap`:
 
 ```bash
-# Check formula style and rubocop rules
-brew style Formula/pxt.rb
+# Style the whole tap, not just the formula. `brew style Formula/pxt.rb` checks Ruby
+# only, while `brew test-bot --only-tap-syntax` in CI also runs shellcheck and shfmt
+# over scripts/, so a formula-only check passes locally and fails in CI.
+brew style pixeltable/tap
 
 # Verify livecheck against PyPI API
 brew livecheck pixeltable/tap/pxt
@@ -173,4 +175,7 @@ brew audit --tap pixeltable/tap pixeltable/tap/pxt
 # Install from source and run the formula integration tests
 brew install --build-from-source pixeltable/tap/pxt
 brew test pixeltable/tap/pxt
+
+# Assert vendored Mach-O install names are still @rpath-relative
+./scripts/check-macho-install-names.sh
 ```
