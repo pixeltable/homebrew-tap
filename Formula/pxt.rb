@@ -18,6 +18,10 @@ class Pxt < Formula
 
   depends_on "python@3.12"
 
+  def preserve_rpath?
+    true
+  end
+
   def install
     virtualenv_create(libexec, "python3.12")
 
@@ -33,6 +37,15 @@ class Pxt < Formula
            "--no-warn-script-location",
            "--prefer-binary",
            "#{wheel}[serve]"
+
+    # Pre-compiled Python wheels (psycopg_binary, PIL, etc.) contain vendored dylibs with
+    # /DLC/ IDs. Change their IDs to @rpath to fit within Mach-O headers and preserve them
+    # during Homebrew's relocation phase.
+    Pathname.glob(libexec/"**/*.dylib").each do |dylib|
+      chmod 0644, dylib
+      quiet_system "/usr/bin/install_name_tool", "-id", "@rpath/#{dylib.basename}", dylib.to_s
+      quiet_system "/usr/bin/codesign", "-f", "-s", "-", dylib.to_s
+    end
 
     bin.install_symlink libexec/"bin/pxt"
   end
