@@ -20,7 +20,9 @@ class Pxt < Formula
 
   def install
     virtualenv_create(libexec, "python3.12")
-    system libexec/"bin/pip", "install",
+    system "python3.12", "-m", "pip",
+           "--python=#{libexec}/bin/python",
+           "install",
            "--no-warn-script-location",
            "--prefer-binary",
            "#{cached_download}[serve]"
