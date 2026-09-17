@@ -1,0 +1,64 @@
+name: CI Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  matrix-test:
+    name: Test Formula on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15, macos-15-intel]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Link Tap into Homebrew
+        run: |
+          TAP_DIR="$(brew --repository pixeltable/tap)"
+          mkdir -p "$(dirname "$TAP_DIR")"
+          rm -rf "$TAP_DIR"
+          ln -s "$GITHUB_WORKSPACE" "$TAP_DIR"
+
+      - name: Run Homebrew Formula Audit
+        run: |
+          brew audit --tap pixeltable/tap Formula/pxt.rb
+
+      - name: Install Formula from Source
+        run: |
+          brew install --verbose --build-from-source Formula/pxt.rb
+
+      - name: Execute Formula Test Suite
+        run: |
+          brew test pixeltable/tap/pxt
+
+      - name: Supplementary CLI Smoke & Service Verification
+        run: |
+          export PIXELTABLE_HOME="$(mktemp -d)"
+          export PXT_PORT="22099"
+
+          # 1. Inspect version and help
+          pxt --version
+          pxt --help
+
+          # 2. Test project scaffolding
+          TEST_DIR="$(mktemp -d)"
+          cd "$TEST_DIR"
+          pxt init
+          test -f pixeltable.toml
+
+          # 3. Test service CLI parsing (requires [serve] extra)
+          pxt service example --brief
+
+          # 4. Verify catalog inspection and database health
+          pxt status
+
+          # Cleanup
+          pxt daemon stop -f || true
+          rm -rf "$PIXELTABLE_HOME" "$TEST_DIR"

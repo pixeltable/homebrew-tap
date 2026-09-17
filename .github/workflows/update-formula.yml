@@ -1,0 +1,129 @@
+name: Update Formula on PyPI Release
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  repository_dispatch:
+    types: [pixeltable-published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Explicit Pixeltable version to bump (optional)"
+        required: false
+        type: string
+
+jobs:
+  check-and-update:
+    runs-on: macos-14
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Tap Repository
+        uses: actions/checkout@v4
+
+      - name: Fetch PyPI Release & Compute Checksum
+        id: pypi
+        run: |
+          set -euo pipefail
+          python3 - << 'EOF'
+          import os, json, urllib.request
+
+          override = "${{ inputs.version }}".strip()
+          req = urllib.request.urlopen("https://pypi.org/pypi/pixeltable/json")
+          data = json.loads(req.read().decode("utf-8"))
+          version = override if override else data["info"]["version"]
+
+          releases = data["releases"].get(version, [])
+          wheel = next((r for r in releases if r["filename"].endswith(".whl")), None)
+          if not wheel:
+              raise RuntimeError(f"No .whl package found for Pixeltable release {version}")
+
+          url = wheel["url"]
+          sha256 = wheel["digests"]["sha256"]
+
+          print(f"Target Version: {version}")
+          print(f"Wheel URL: {url}")
+          print(f"SHA256: {sha256}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={version}\n")
+              f.write(f"url={url}\n")
+              f.write(f"sha256={sha256}\n")
+          EOF
+
+      - name: Determine If Update Required
+        id: check
+        run: |
+          set -euo pipefail
+          python3 - << 'EOF'
+          import os, re
+
+          with open("Formula/pxt.rb", "r") as f:
+              content = f.read()
+
+          m = re.search(r'url\s+"https://files.pythonhosted.org/packages/[^"]+/pixeltable-([^"-]+)-py3-none-any\.whl"', content)
+          current_ver = m.group(1) if m else "0.0.0"
+          target_ver = "${{ steps.pypi.outputs.version }}"
+
+          print(f"Current formula version: {current_ver}")
+          print(f"Target PyPI version:    {target_ver}")
+
+          should_update = "true" if current_ver != target_ver else "false"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"should_update={should_update}\n")
+          EOF
+
+      - name: Update Formula/pxt.rb
+        if: steps.check.outputs.should_update == 'true'
+        run: |
+          set -euo pipefail
+          python3 - << 'EOF'
+          import re
+
+          new_url = "${{ steps.pypi.outputs.url }}"
+          new_sha = "${{ steps.pypi.outputs.sha256 }}"
+
+          with open("Formula/pxt.rb", "r") as f:
+              content = f.read()
+
+          content = re.sub(r'url\s+"[^"]+"', f'url "{new_url}"', content, count=1)
+          content = re.sub(r'sha256\s+"[^"]+"', f'sha256 "{new_sha}"', content, count=1)
+
+          with open("Formula/pxt.rb", "w") as f:
+              f.write(content)
+          EOF
+
+      - name: Set up Tap Path for Homebrew
+        if: steps.check.outputs.should_update == 'true'
+        run: |
+          TAP_DIR="$(brew --repository pixeltable/tap)"
+          mkdir -p "$(dirname "$TAP_DIR")"
+          rm -rf "$TAP_DIR"
+          ln -s "$GITHUB_WORKSPACE" "$TAP_DIR"
+
+      - name: Validate & Test Updated Formula
+        if: steps.check.outputs.should_update == 'true'
+        run: |
+          brew audit --tap pixeltable/tap Formula/pxt.rb
+          brew install --build-from-source Formula/pxt.rb
+          brew test pixeltable/tap/pxt
+
+      - name: Create Pull Request
+        if: steps.check.outputs.should_update == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(formula): bump pxt to ${{ steps.pypi.outputs.version }}"
+          branch: "bump-pxt-v${{ steps.pypi.outputs.version }}"
+          title: "Bump pxt to v${{ steps.pypi.outputs.version }}"
+          body: |
+            Automated formula bump for Pixeltable release `${{ steps.pypi.outputs.version }}`.
+
+            - **Wheel URL:** `${{ steps.pypi.outputs.url }}`
+            - **SHA256:** `${{ steps.pypi.outputs.sha256 }}`
+            - **Verification:** Passed `brew audit --tap`, source installation, and integration tests (`brew test`).
+          labels: |
+            dependencies
+            automated-pr
