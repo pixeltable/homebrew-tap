@@ -41,11 +41,15 @@ jobs:
       - run: brew test-bot --only-setup
 
       - run: brew test-bot --only-tap-syntax
+      # Also run on push to main. The updater in update-formula.yml pushes version
+      # bumps straight to main, so gating this on pull_request meant the formula-build
+      # and bottle legs never ran for an automated release. This verifies after the
+      # bump has shipped rather than before, which is the accepted trade for not
+      # requiring a PR per release.
       - run: brew test-bot --only-formulae
-        if: github.event_name == 'pull_request'
 
       - name: Upload bottles as artifact
-        if: always() && github.event_name == 'pull_request'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bottles_${{ matrix.os }}
