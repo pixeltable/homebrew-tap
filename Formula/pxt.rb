@@ -20,12 +20,20 @@ class Pxt < Formula
 
   def install
     virtualenv_create(libexec, "python3.12")
+
+    wheel = Dir["*.whl"].first
+    if wheel.nil?
+      wheel = buildpath/"pixeltable-#{version}-py3-none-any.whl"
+      cp cached_download, wheel
+    end
+
     system "python3.12", "-m", "pip",
            "--python=#{libexec}/bin/python",
            "install",
            "--no-warn-script-location",
            "--prefer-binary",
-           "#{cached_download}[serve]"
+           "#{wheel}[serve]"
+
     bin.install_symlink libexec/"bin/pxt"
   end
 
