@@ -31,6 +31,14 @@ jobs:
           brew install python@3.12 || true
           brew link --overwrite python@3.12 || true
 
+      - name: Verify Formula Style
+        run: |
+          brew style Formula/pxt.rb
+
+      - name: Verify Livecheck
+        run: |
+          brew livecheck pixeltable/tap/pxt
+
       - name: Run Homebrew Formula Audit
         run: |
           brew audit --tap pixeltable/tap pixeltable/tap/pxt

@@ -12,8 +12,10 @@ class Pxt < Formula
   head "https://github.com/pixeltable/pixeltable.git", branch: "main"
 
   livecheck do
-    url :stable
-    strategy :pypi
+    url "https://pypi.org/pypi/pixeltable/json"
+    strategy :json do |json|
+      json.dig("info", "version")
+    end
   end
 
   depends_on "python@3.12"
