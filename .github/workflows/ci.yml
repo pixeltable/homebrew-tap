@@ -45,8 +45,11 @@ jobs:
 
       - name: Supplementary CLI Smoke & Service Verification
         run: |
-          export PATH="$(brew --prefix)/bin:$PATH"
-          export PIXELTABLE_HOME="$(mktemp -d)"
+          BREW_PREFIX="$(brew --prefix)"
+          PATH="${BREW_PREFIX}/bin:$PATH"
+          export PATH
+          PIXELTABLE_HOME="$(mktemp -d)"
+          export PIXELTABLE_HOME
           export PXT_PORT="22099"
 
           # 1. Inspect version and help
