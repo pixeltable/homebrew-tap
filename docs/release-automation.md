@@ -76,7 +76,7 @@ If `pixeltable/pixeltable` already has a PyPI publishing workflow (e.g. `.github
       - name: Trigger Homebrew Formula Update
         env:
           GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_SYNC_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }} # e.g. "0.7.9" (without leading 'v')
+          VERSION: ${{ steps.version.outputs.version }} # e.g. "0.7.9" or "v0.7.9" (v-prefix is automatically normalized)
         run: |
           echo "Dispatching formula update to pixeltable/homebrew-tap for version ${VERSION}..."
           curl -f -X POST \

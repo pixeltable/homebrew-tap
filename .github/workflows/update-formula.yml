@@ -11,6 +11,11 @@ on:
         description: "Explicit Pixeltable version to bump (optional)"
         required: false
         type: string
+      force:
+        description: "Force formula validation and push even if version has not changed"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   check-and-update:
@@ -22,6 +27,8 @@ jobs:
     steps:
       - name: Checkout Tap Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Fetch PyPI Release & Compute Checksum
         id: pypi
@@ -30,7 +37,8 @@ jobs:
           python3 - << 'EOF'
           import os, json, time, urllib.request
 
-          override = "${{ github.event.client_payload.version || inputs.version }}".strip()
+          raw_override = "${{ github.event.client_payload.version || inputs.version }}".strip()
+          override = raw_override.lstrip("v") if raw_override else ""
           max_attempts = 6 if override else 1
           wheel = None
           version = None
@@ -48,7 +56,10 @@ jobs:
 
                   version = override if override else data["info"]["version"]
                   releases = data.get("releases", {}).get(version, [])
-                  wheel = next((r for r in releases if r["filename"].endswith(".whl")), None)
+                  if not releases and version == data.get("info", {}).get("version"):
+                      releases = data.get("urls", [])
+
+                  wheel = next((r for r in releases if r.get("filename", "").endswith(".whl")), None)
                   if wheel:
                       url = wheel["url"]
                       sha256 = wheel["digests"]["sha256"]
@@ -84,14 +95,16 @@ jobs:
           with open("Formula/pxt.rb", "r") as f:
               content = f.read()
 
-          m = re.search(r'/pixeltable-([0-9a-zA-Z\.\_\+]+)-py3-none-any\.whl', content)
+          m = re.search(r'url\s+"https://files\.pythonhosted\.org/packages/[^"]+/pixeltable-([0-9a-zA-Z\.\_\+]+?)(?:-[^/]+)?\.whl"', content)
           current_ver = m.group(1) if m else "0.0.0"
           target_ver = "${{ steps.pypi.outputs.version }}"
+          force_update = "${{ inputs.force }}".lower() in ["true", "1"]
 
           print(f"Current formula version: {current_ver}")
           print(f"Target PyPI version:    {target_ver}")
+          print(f"Force update flag:       {force_update}")
 
-          should_update = "true" if current_ver != target_ver else "false"
+          should_update = "true" if (current_ver != target_ver or force_update) else "false"
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"should_update={should_update}\n")
               f.write(f"current_version={current_ver}\n")
@@ -155,6 +168,12 @@ jobs:
         if: steps.check.outputs.should_update == 'true'
         run: |
           set -euo pipefail
+          if git diff --quiet Formula/pxt.rb; then
+            echo "No changes detected in Formula/pxt.rb"
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/pxt.rb
@@ -163,8 +182,13 @@ jobs:
             echo "pushed=true" >> "$GITHUB_OUTPUT"
             echo "Successfully pushed formula update directly to main."
           else
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
-            echo "Direct push was rejected (e.g. branch protection). Falling back to Pull Request..."
+            if git pull --rebase origin main && git push origin main; then
+              echo "pushed=true" >> "$GITHUB_OUTPUT"
+              echo "Successfully pushed formula update after rebase."
+            else
+              echo "pushed=false" >> "$GITHUB_OUTPUT"
+              echo "Direct push was rejected (e.g. branch protection). Falling back to Pull Request..."
+            fi
           fi
 
       - name: Create Pull Request (Fallback)

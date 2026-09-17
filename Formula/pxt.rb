@@ -29,7 +29,7 @@ class Pxt < Formula
 
     wheel = Dir["*.whl"].first
     if wheel.nil?
-      wheel = buildpath/"pixeltable-#{version}-py3-none-any.whl"
+      wheel = buildpath/cached_download.basename.to_s.sub(/\A[0-9a-f]+--/, "")
       cp cached_download, wheel
     end
 
@@ -43,12 +43,14 @@ class Pxt < Formula
     # Pre-compiled Python wheels (psycopg_binary, PIL, etc.) contain vendored dylibs with
     # /DLC/ IDs. Change their IDs to @rpath to fit within Mach-O headers and preserve them
     # during Homebrew's relocation phase. Use File::FNM_DOTMATCH to traverse hidden .dylibs.
-    Pathname.glob(libexec/"**/*.dylib", File::FNM_DOTMATCH).each do |dylib|
-      next if dylib.symlink?
+    if OS.mac?
+      Pathname.glob(libexec/"**/*.dylib", File::FNM_DOTMATCH).each do |dylib|
+        next if dylib.symlink?
 
-      chmod 0644, dylib
-      quiet_system "/usr/bin/install_name_tool", "-id", "@rpath/#{dylib.basename}", dylib.to_s
-      quiet_system "/usr/bin/codesign", "-f", "-s", "-", dylib.to_s
+        chmod 0644, dylib
+        quiet_system "/usr/bin/install_name_tool", "-id", "@rpath/#{dylib.basename}", dylib.to_s
+        quiet_system "/usr/bin/codesign", "-f", "-s", "-", dylib.to_s
+      end
     end
 
     bin.install_symlink libexec/"bin/pxt"
