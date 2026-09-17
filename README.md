@@ -42,6 +42,32 @@ pxt --version
 pxt --help
 ```
 
+### Platform Support
+
+This tap targets **macOS only**, on both Apple Silicon and Intel. CI covers `macos-14`,
+`macos-15`, and `macos-15-intel`.
+
+Homebrew exists on Linux, but the tap is not tested there and does not claim support. The
+problem this tap solves is PEP 668, which blocks `pip install` against a Homebrew Python on
+macOS. Linux, WSL, and Windows users have no such block and are better served by a Python
+tool runner:
+
+```bash
+uv tool install "pixeltable[serve]"
+# or
+pipx install "pixeltable[serve]"
+```
+
+### Finding the Tap
+
+`brew search` only indexes `homebrew/core` and `homebrew/cask`, plus taps already present
+on your machine, so searching for `pixeltable` will not surface this tap before you add it.
+Install by its full name, or `brew tap pixeltable/tap` first:
+
+```bash
+brew install pixeltable/tap/pxt
+```
+
 ---
 
 ## Features & Architecture
@@ -107,7 +133,7 @@ pxt daemon start
 pxt daemon stop
 pxt daemon restart
 
-# Force-stop all running pxt daemons if needed
+# Force-stop the daemon on the configured port, even if it is serving requests
 pxt daemon stop -f
 ```
 
@@ -152,7 +178,7 @@ pxt status
 ### Issue: Daemon unresponsive or stale lock
 If the background daemon fails to respond:
 ```bash
-# Force-terminate any running daemon processes
+# Force-stop the daemon on the configured port, even if it is serving requests
 pxt daemon stop -f
 
 # Verify status
@@ -183,6 +209,7 @@ When triggered, the updater workflow:
 - Fetches the release wheel and computes its SHA-256 (with retry backoff for PyPI CDN propagation).
 - Updates `Formula/pxt.rb`.
 - Runs `brew style`, `brew livecheck`, `brew audit --tap`, source installation, and `brew test`.
+- Asserts every vendored Mach-O install name is still `@rpath`-relative (`scripts/check-macho-install-names.sh`), so a dependency bump cannot reintroduce the Mach-O header overflow.
 - Commits and pushes directly to `main` (falling back to a pull request if branch protection requires it).
 
 For complete instructions on setting up `HOMEBREW_TAP_SYNC_TOKEN` and adding the dispatch step to the core repo, see:
@@ -205,6 +232,9 @@ brew audit --tap pixeltable/tap pixeltable/tap/pxt
 # Build from source and execute integration tests
 brew install --build-from-source pixeltable/tap/pxt
 brew test pixeltable/tap/pxt
+
+# Assert vendored Mach-O install names remain relocatable
+./scripts/check-macho-install-names.sh
 ```
 
 ---

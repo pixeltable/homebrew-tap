@@ -51,6 +51,12 @@ jobs:
         run: |
           brew test pixeltable/tap/pxt
 
+      # Guards the failure the @rpath normalisation in Formula/pxt.rb exists to prevent.
+      # A dependency bump can add a library with an absolute install name, and Homebrew
+      # only overflows the Mach-O header at install time, so assert it explicitly.
+      - name: Assert Mach-O Install Names Stay Relocatable
+        run: ./scripts/check-macho-install-names.sh
+
       - name: Supplementary CLI Smoke & Service Verification
         run: |
           BREW_PREFIX="$(brew --prefix)"
@@ -58,7 +64,12 @@ jobs:
           export PATH
           PIXELTABLE_HOME="$(mktemp -d)"
           export PIXELTABLE_HOME
-          export PXT_PORT="22099"
+
+          # Bind an ephemeral port instead of a fixed one: `pxt daemon stop -f` kills
+          # whatever holds the port, and runners are not guaranteed to be exclusive.
+          PXT_PORT="$(python3 -c "import socket; s = socket.socket(); s.bind(('127.0.0.1', 0)); port = s.getsockname()[1]; s.close(); print(port)")"
+          export PXT_PORT
+          echo "Using PXT_PORT=${PXT_PORT}"
 
           # 1. Inspect version and help
           pxt --version
@@ -81,3 +92,13 @@ jobs:
           # Cleanup
           pxt daemon stop -f || true
           rm -rf "$PIXELTABLE_HOME" "$TEST_DIR"
+
+  shellcheck:
+    name: Lint Shell Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        run: shellcheck scripts/*.sh
