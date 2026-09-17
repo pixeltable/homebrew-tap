@@ -28,11 +28,11 @@ jobs:
 
       - name: Run Homebrew Formula Audit
         run: |
-          brew audit --tap pixeltable/tap Formula/pxt.rb
+          brew audit --tap pixeltable/tap pixeltable/tap/pxt
 
       - name: Install Formula from Source
         run: |
-          brew install --verbose --build-from-source Formula/pxt.rb
+          brew install --verbose --build-from-source pixeltable/tap/pxt
 
       - name: Execute Formula Test Suite
         run: |
