@@ -26,6 +26,11 @@ jobs:
           rm -rf "$TAP_DIR"
           ln -s "$GITHUB_WORKSPACE" "$TAP_DIR"
 
+      - name: Prepare Python 3.12 Environment
+        run: |
+          brew install python@3.12 || true
+          brew link --overwrite python@3.12 || true
+
       - name: Run Homebrew Formula Audit
         run: |
           brew audit --tap pixeltable/tap pixeltable/tap/pxt
@@ -40,6 +45,7 @@ jobs:
 
       - name: Supplementary CLI Smoke & Service Verification
         run: |
+          export PATH="$(brew --prefix)/bin:$PATH"
           export PIXELTABLE_HOME="$(mktemp -d)"
           export PXT_PORT="22099"
 
@@ -53,8 +59,10 @@ jobs:
           pxt init
           test -f pixeltable.toml
 
-          # 3. Test service CLI parsing (requires [serve] extra)
-          pxt service example --brief
+          # 3. Test schema and service CLI parsing (requires [serve] extra)
+          pxt schema example --brief
+          pxt service example --out app.py
+          test -f app.py
 
           # 4. Verify catalog inspection and database health
           pxt status
