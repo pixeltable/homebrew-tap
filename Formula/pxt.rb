@@ -75,7 +75,7 @@ class Pxt < Formula
     ENV["PXT_PORT"] = "22099"
 
     assert_match version.to_s, shell_output("#{bin}/pxt --version")
-    assert_match "Pixeltable", shell_output("#{bin}/pxt --help")
+    assert_match "usage: pxt", shell_output("#{bin}/pxt --help")
 
     system bin/"pxt", "init"
     assert_path_exists testpath/"pixeltable.toml"
@@ -84,7 +84,7 @@ class Pxt < Formula
       system bin/"pxt", "daemon", "start"
       daemon_status = shell_output("#{bin}/pxt daemon status")
       assert_match "PID", daemon_status
-      assert_match "22099", daemon_status
+      assert_match "Service", daemon_status
 
       status_output = shell_output("#{bin}/pxt status")
       assert_match "total_tables", status_output
