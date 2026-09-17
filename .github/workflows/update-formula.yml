@@ -177,7 +177,7 @@ jobs:
       - name: Validate & Test Updated Formula
         if: steps.check.outputs.should_update == 'true'
         run: |
-          brew style Formula/pxt.rb
+          brew style pixeltable/tap
           brew livecheck pixeltable/tap/pxt
           brew audit --tap pixeltable/tap pixeltable/tap/pxt
           brew install --verbose --build-from-source pixeltable/tap/pxt

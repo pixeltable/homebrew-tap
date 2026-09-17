@@ -197,45 +197,16 @@ brew test pixeltable/tap/pxt
 
 ---
 
-## Maintainer Guide: Automated Release Pipeline
+## Maintainer Guide
 
-This repository automates formula updates using the pattern popularized by Simon Willison:
+Formula updates are automated: a `repository_dispatch` from `pixeltable/pixeltable` on
+release, a 6-hourly PyPI poll as a safety net, and a manual `workflow_dispatch`. The
+updater bumps the wheel URL and SHA-256, revalidates the formula, and pushes to `main`.
 
-1. **PyPI Webhook Dispatch (`repository_dispatch`)**: When a new Pixeltable release is published to PyPI from the main repo [pixeltable/pixeltable](https://github.com/pixeltable/pixeltable), a GitHub Actions step dispatches a `pixeltable-published` event.
-2. **Scheduled Polling (Cron)**: Every 6 hours, GitHub Actions checks PyPI for newly published wheels as a safety net against missed webhook events.
-3. **Manual Trigger (`workflow_dispatch`)**: Maintainers can trigger an on-demand update with an optional version override via the GitHub Actions tab.
+Setup, the dispatch snippets for the core repo, and the local check commands live in one
+place so they cannot drift apart:
 
-When triggered, the updater workflow:
-- Fetches the release wheel and computes its SHA-256 (with retry backoff for PyPI CDN propagation).
-- Updates `Formula/pxt.rb`.
-- Runs `brew style`, `brew livecheck`, `brew audit --tap`, source installation, and `brew test`.
-- Asserts every vendored Mach-O install name is still `@rpath`-relative (`scripts/check-macho-install-names.sh`), so a dependency bump cannot reintroduce the Mach-O header overflow.
-- Commits and pushes directly to `main` (falling back to a pull request if branch protection requires it).
-
-For complete instructions on setting up `HOMEBREW_TAP_SYNC_TOKEN` and adding the dispatch step to the core repo, see:
 👉 **[Release Automation Guide](docs/release-automation.md)**
-
-### Local Formula Testing & Auditing
-
-To validate changes locally:
-
-```bash
-# Check Ruby syntax and Homebrew style guidelines
-brew style Formula/pxt.rb
-
-# Check version detection against PyPI JSON API
-brew livecheck pixeltable/tap/pxt
-
-# Strict audit
-brew audit --tap pixeltable/tap pixeltable/tap/pxt
-
-# Build from source and execute integration tests
-brew install --build-from-source pixeltable/tap/pxt
-brew test pixeltable/tap/pxt
-
-# Assert vendored Mach-O install names remain relocatable
-./scripts/check-macho-install-names.sh
-```
 
 ---
 
