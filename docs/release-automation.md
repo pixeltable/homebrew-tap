@@ -28,6 +28,7 @@ This document describes how formula updates are automated in `pixeltable/homebre
     │     • brew audit --tap pixeltable/tap pixeltable/tap/pxt
     │     • brew install --build-from-source pixeltable/tap/pxt
     │     • brew test pixeltable/tap/pxt
+    │     • scripts/check-macho-install-names.sh
     │
     └─> Commits & pushes to `main` (falls back to PR if branch protection requires it)
 ```

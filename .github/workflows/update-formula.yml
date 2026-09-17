@@ -30,14 +30,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Untrusted values reach this job through `client_payload` and `inputs`. They are
+      # passed through `env` and read with os.environ, never interpolated into the script
+      # body: GitHub expands `${{ }}` before the shell runs, so heredoc quoting alone
+      # would not stop a payload from breaking out and executing on a runner that holds
+      # `contents: write`.
       - name: Fetch PyPI Release & Compute Checksum
         id: pypi
+        env:
+          VERSION_OVERRIDE: ${{ github.event.client_payload.version || inputs.version }}
         run: |
           set -euo pipefail
           python3 - << 'EOF'
           import os, json, time, urllib.request
 
-          raw_override = "${{ github.event.client_payload.version || inputs.version }}".strip()
+          raw_override = os.environ.get("VERSION_OVERRIDE", "").strip()
           override = raw_override.lstrip("v") if raw_override else ""
           max_attempts = 6 if override else 1
           wheel = None
@@ -75,6 +82,13 @@ jobs:
           if not wheel:
               raise RuntimeError(f"No .whl package found on PyPI for Pixeltable release '{version}' after {max_attempts} attempts.")
 
+          # PyPI is the only source for these three values, and each is validated before
+          # it reaches the formula, so a compromised response cannot inject Ruby.
+          if not url.startswith("https://files.pythonhosted.org/packages/") or not url.endswith(".whl"):
+              raise RuntimeError(f"Refusing unexpected wheel URL: {url}")
+          if len(sha256) != 64 or not all(c in "0123456789abcdef" for c in sha256.lower()):
+              raise RuntimeError(f"Refusing malformed sha256: {sha256}")
+
           print(f"Target Version: {version}")
           print(f"Wheel URL: {url}")
           print(f"SHA256: {sha256}")
@@ -87,6 +101,9 @@ jobs:
 
       - name: Determine If Update Required
         id: check
+        env:
+          TARGET_VERSION: ${{ steps.pypi.outputs.version }}
+          FORCE_UPDATE: ${{ inputs.force }}
         run: |
           set -euo pipefail
           python3 - << 'EOF'
@@ -97,8 +114,8 @@ jobs:
 
           m = re.search(r'url\s+"https://files\.pythonhosted\.org/packages/[^"]+/pixeltable-([0-9a-zA-Z\.\_\+]+?)(?:-[^/]+)?\.whl"', content)
           current_ver = m.group(1) if m else "0.0.0"
-          target_ver = "${{ steps.pypi.outputs.version }}"
-          force_update = "${{ inputs.force }}".lower() in ["true", "1"]
+          target_ver = os.environ["TARGET_VERSION"]
+          force_update = os.environ.get("FORCE_UPDATE", "").lower() in ["true", "1"]
 
           print(f"Current formula version: {current_ver}")
           print(f"Target PyPI version:    {target_ver}")
@@ -112,26 +129,29 @@ jobs:
 
       - name: Update Formula/pxt.rb
         if: steps.check.outputs.should_update == 'true'
+        env:
+          NEW_URL: ${{ steps.pypi.outputs.url }}
+          NEW_SHA: ${{ steps.pypi.outputs.sha256 }}
         run: |
           set -euo pipefail
           python3 - << 'EOF'
-          import re
+          import os, re
 
-          new_url = "${{ steps.pypi.outputs.url }}"
-          new_sha = "${{ steps.pypi.outputs.sha256 }}"
+          new_url = os.environ["NEW_URL"]
+          new_sha = os.environ["NEW_SHA"]
 
           with open("Formula/pxt.rb", "r") as f:
               content = f.read()
 
           content = re.sub(
               r'url\s+"https://files\.pythonhosted\.org/packages/[^"]+/pixeltable-[^"]+\.whl"',
-              f'url "{new_url}"',
+              lambda _: f'url "{new_url}"',
               content,
               count=1
           )
           content = re.sub(
               r'sha256\s+"[0-9a-fA-F]{64}"',
-              f'sha256 "{new_sha}"',
+              lambda _: f'sha256 "{new_sha}"',
               content,
               count=1
           )
@@ -163,9 +183,18 @@ jobs:
           brew install --verbose --build-from-source pixeltable/tap/pxt
           brew test pixeltable/tap/pxt
 
+      # A new wheel can pull in a dependency whose vendored dylibs carry absolute install
+      # names. Homebrew rewrites those to long opt paths and the Mach-O header overflows,
+      # so assert the invariant here rather than discovering it in a user's install.
+      - name: Assert Mach-O Install Names Stay Relocatable
+        if: steps.check.outputs.should_update == 'true'
+        run: ./scripts/check-macho-install-names.sh
+
       - name: Commit and Push Update to main
         id: push_step
         if: steps.check.outputs.should_update == 'true'
+        env:
+          NEW_VERSION: ${{ steps.pypi.outputs.version }}
         run: |
           set -euo pipefail
           if git diff --quiet Formula/pxt.rb; then
@@ -177,7 +206,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/pxt.rb
-          git commit -m "chore(formula): bump pxt to ${{ steps.pypi.outputs.version }}"
+          git commit -m "chore(formula): bump pxt to ${NEW_VERSION}"
           if git push origin main; then
             echo "pushed=true" >> "$GITHUB_OUTPUT"
             echo "Successfully pushed formula update directly to main."

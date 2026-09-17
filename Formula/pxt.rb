@@ -20,9 +20,9 @@ class Pxt < Formula
 
   depends_on "python@3.12"
 
-  def preserve_rpath?
-    true
-  end
+  # `install` below rewrites vendored wheel dylib IDs to @rpath. This tells Homebrew's
+  # relocator to leave those IDs alone instead of expanding them back to opt paths.
+  preserve_rpath
 
   def install
     virtualenv_create(libexec, "python3.12")
@@ -40,16 +40,30 @@ class Pxt < Formula
            "--prefer-binary",
            "#{wheel}[serve]"
 
-    # Pre-compiled Python wheels (psycopg_binary, PIL, etc.) contain vendored dylibs with
-    # /DLC/ IDs. Change their IDs to @rpath to fit within Mach-O headers and preserve them
-    # during Homebrew's relocation phase. Use File::FNM_DOTMATCH to traverse hidden .dylibs.
+    # Pre-compiled wheels (Pillow, psycopg_binary, pyarrow) ship vendored Mach-O
+    # libraries whose install names point at the wheel builder's staging prefix, e.g.
+    # /DLC/libjpeg.9.dylib. Homebrew rewrites each such ID to this keg's opt path, which
+    # is long enough to overflow the Mach-O header ("updated load commands do not fit in
+    # the header"). Normalising the IDs to @rpath keeps them short; `preserve_rpath`
+    # above then stops the relocator from touching them. Consumers already load these
+    # through @loader_path, so only the ID changes.
+    #
+    # Match on the Mach-O type rather than the extension: maturin-built extensions are
+    # dylibs named *.so, and a future wheel may ship one with an absolute ID.
+    # FNM_DOTMATCH is required to reach delocate's hidden .dylibs directories.
     if OS.mac?
-      Pathname.glob(libexec/"**/*.dylib", File::FNM_DOTMATCH).each do |dylib|
-        next if dylib.symlink?
+      Pathname.glob(libexec/"**/*.{dylib,so}", File::FNM_DOTMATCH).each do |file|
+        next if file.symlink?
 
-        chmod 0644, dylib
-        quiet_system "/usr/bin/install_name_tool", "-id", "@rpath/#{dylib.basename}", dylib.to_s
-        quiet_system "/usr/bin/codesign", "-f", "-s", "-", dylib.to_s
+        macho = MachOPathname.wrap(file)
+        next unless macho.dylib?
+
+        dylib_id = macho.dylib_id
+        next if dylib_id.nil? || dylib_id.start_with?("@rpath", "/usr/lib/swift")
+
+        chmod "u+w", file
+        quiet_system "/usr/bin/install_name_tool", "-id", "@rpath/#{file.basename}", file
+        quiet_system "/usr/bin/codesign", "-f", "-s", "-", file
       end
     end
 
@@ -68,6 +82,10 @@ class Pxt < Formula
         pxt daemon stop
         pxt daemon restart
 
+      pxt runs from a virtualenv bound to this exact python@3.12 build. Upgrading
+      python@3.12, even by a patch release, moves that path and breaks pxt. Rebuild it:
+        brew reinstall pixeltable/tap/pxt
+
       If you prefer running pxt via dedicated Python tool runners:
         uv tool install "pixeltable[serve]"
         pipx install "pixeltable[serve]"
@@ -76,7 +94,9 @@ class Pxt < Formula
 
   test do
     ENV["PIXELTABLE_HOME"] = (testpath/".pixeltable").to_s
-    ENV["PXT_PORT"] = "22099"
+    # Never assume a fixed port: `pxt daemon stop -f` kills whatever holds it, which
+    # would take out a developer's own daemon during `brew test`.
+    ENV["PXT_PORT"] = free_port.to_s
 
     assert_match version.to_s, shell_output("#{bin}/pxt --version")
     assert_match "usage: pxt", shell_output("#{bin}/pxt --help")
