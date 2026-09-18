@@ -71,6 +71,15 @@ class Pxt < Formula
     end
 
     bin.install_symlink libexec/"bin/pxt"
+
+    # A stable name for the virtualenv's pip so optional packages have one
+    # documented install path: `pxt-pip install openai`. The opt path is not
+    # version-pathed, so the command survives upgrades and reinstalls.
+    (bin/"pxt-pip").write <<~EOS
+      #!/bin/sh
+      exec "#{opt_libexec}/bin/python" -m pip "$@"
+    EOS
+    chmod 0755, bin/"pxt-pip"
   end
 
   def caveats
@@ -88,6 +97,16 @@ class Pxt < Formula
       pxt runs from a virtualenv bound to python@3.12. If pxt stops working after a
       python@3.12 upgrade or reinstall, rebuild the environment:
         brew reinstall pixeltable/tap/pxt
+
+      Optional AI features need extra packages in pxt's virtualenv:
+        pxt-pip install openai        # pxt.functions.openai
+        pxt-pip install tiktoken      # token counting in document_splitter
+        pxt-pip install spacy         # document_splitter(separators="sentence")
+        pxt-pip install scenedetect   # pxt.functions.video scene detection
+      spaCy also needs a language model, e.g.:
+        #{opt_libexec}/bin/python -m spacy download en_core_web_sm
+      Extras land inside the formula's keg, so `brew reinstall` or an upgrade
+      removes them; re-run `pxt-pip install` afterwards.
 
       If you prefer running pxt via dedicated Python tool runners:
         uv tool install "pixeltable[serve]"
@@ -110,6 +129,10 @@ class Pxt < Formula
     # The [serve] extra is optional upstream but is what `pxt service` needs; the CLI
     # checks above pass without it, so assert it actually landed in the virtualenv.
     system libexec/"bin/python", "-c", "import fastapi, uvicorn"
+
+    # Optional-package installs are documented via the generated shim; it must exec
+    # the keg's virtualenv python through the stable opt path.
+    assert_match "pip", shell_output("#{bin}/pxt-pip --version")
 
     begin
       system bin/"pxt", "daemon", "start"

@@ -116,6 +116,29 @@ pxt service update app.py my_app
 
 ---
 
+## Optional AI Packages
+
+The formula installs `pixeltable[serve]` only. Many `pxt.functions.*` helpers
+need optional packages, which you can add to the formula's virtualenv with the
+`pxt-pip` shim:
+
+```bash
+pxt-pip install openai        # pxt.functions.openai
+pxt-pip install tiktoken      # token counting in document_splitter
+pxt-pip install spacy         # document_splitter(separators="sentence")
+pxt-pip install scenedetect   # pxt.functions.video scene detection
+
+# spaCy also needs a language model, e.g.:
+"$(brew --prefix)/opt/pxt/libexec/bin/python" -m spacy download en_core_web_sm
+```
+
+Missing a package? The error message names it: install it with `pxt-pip install <name>`.
+
+Extras live inside the formula's keg, so `brew reinstall` or an upgrade removes
+them. Re-run `pxt-pip install` afterwards.
+
+---
+
 ## Daemon Architecture & Lifecycle
 
 `pxt` utilizes an autonomous, project-aware background daemon (`127.0.0.1:22089`) to handle CLI operations, monitor tables, and manage database connection pooling.
