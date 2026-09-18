@@ -42,11 +42,16 @@ jobs:
       - run: brew test-bot --only-setup
 
       - run: brew test-bot --only-tap-syntax
-      # Also run on push to main. The updater in update-formula.yml pushes version
-      # bumps straight to main, so gating this on pull_request meant the formula-build
-      # and bottle legs never ran for an automated release. This verifies after the
-      # bump has shipped rather than before, which is the accepted trade for not
-      # requiring a PR per release.
+      # Ungated so it also runs on push to main, but be aware of what it does NOT do:
+      # `detect_formulae!` diffs HEAD against origin/main, and on a push to main those
+      # are the same commit, so nothing is ever detected and no formula is built or
+      # bottled. It has never built pxt on any platform or produced a bottle artifact.
+      # To get real four-platform build and bottle coverage, name the formula so
+      # detection is bypassed: `brew test-bot --only-formulae pixeltable/tap/pxt`.
+      # That is deliberately not done here: it would add ~10 minutes to every push to
+      # cover Linux, which this tap does not support, and bottles, which are not
+      # shipped. Formula builds are covered by ci.yml and by update-formula.yml before
+      # it commits. Turn it on when Phase 2 bottling starts.
       - run: brew test-bot --only-formulae
 
       - name: Upload bottles as artifact
