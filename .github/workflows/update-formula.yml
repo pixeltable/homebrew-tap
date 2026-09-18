@@ -17,9 +17,14 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: update-formula
+  cancel-in-progress: false
+
 jobs:
   check-and-update:
     runs-on: macos-14
+    timeout-minutes: 60
     permissions:
       contents: write
       pull-requests: write
@@ -42,11 +47,18 @@ jobs:
         run: |
           set -euo pipefail
           python3 - << 'EOF'
-          import os, json, time, urllib.request
+          import os, json, re, time, urllib.request
 
           raw_override = os.environ.get("VERSION_OVERRIDE", "").strip()
-          override = raw_override.lstrip("v") if raw_override else ""
-          max_attempts = 6 if override else 1
+          override = raw_override.removeprefix("v") if raw_override else ""
+          # The version later reaches GITHUB_OUTPUT, branch names, and PR text; it must
+          # be version-shaped, not free text.
+          if override and not re.fullmatch(r"[0-9][0-9A-Za-z.\-_+]{0,63}", override):
+              raise RuntimeError(f"Refusing malformed version override: {override!r}")
+
+          # Retry on every trigger: the PyPI JSON API can briefly disagree with the CDN
+          # right after a publish, for dispatched and auto-detected versions alike.
+          max_attempts = 6
           wheel = None
           version = None
           url = None
@@ -62,11 +74,20 @@ jobs:
                       data = json.loads(resp.read().decode("utf-8"))
 
                   version = override if override else data["info"]["version"]
+                  if not re.fullmatch(r"[0-9][0-9A-Za-z.\-_+]{0,63}", version):
+                      raise RuntimeError(f"Refusing malformed version string from PyPI: {version!r}")
+
                   releases = data.get("releases", {}).get(version, [])
                   if not releases and version == data.get("info", {}).get("version"):
                       releases = data.get("urls", [])
 
-                  wheel = next((r for r in releases if r.get("filename", "").endswith(".whl")), None)
+                  wheel = next(
+                      (
+                          r for r in releases
+                          if r.get("filename", "").endswith(".whl") and not r.get("yanked")
+                      ),
+                      None,
+                  )
                   if wheel:
                       url = wheel["url"]
                       sha256 = wheel["digests"]["sha256"]
@@ -113,7 +134,12 @@ jobs:
               content = f.read()
 
           m = re.search(r'url\s+"https://files\.pythonhosted\.org/packages/[^"]+/pixeltable-([0-9a-zA-Z\.\_\+]+?)(?:-[^/]+)?\.whl"', content)
-          current_ver = m.group(1) if m else "0.0.0"
+          # A miss here means the formula URL drifted from what the rewrite step below
+          # substitutes. Fail loudly: otherwise the run would report "updated" while the
+          # rewrite no-ops and the formula quietly goes stale forever.
+          if not m:
+              raise RuntimeError("Could not parse the wheel URL in Formula/pxt.rb")
+          current_ver = m.group(1)
           target_ver = os.environ["TARGET_VERSION"]
           force_update = os.environ.get("FORCE_UPDATE", "").lower() in ["true", "1"]
 
@@ -121,9 +147,47 @@ jobs:
           print(f"Target PyPI version:    {target_ver}")
           print(f"Force update flag:       {force_update}")
 
-          should_update = "true" if (current_ver != target_ver or force_update) else "false"
+          # Minimal PEP 440 ordering: a numeric release tuple plus a stage tuple,
+          # dev < a < b < rc < final < post. A post on a prerelease sits just above
+          # that prerelease but below the final. Trailing zeros are dropped so
+          # "0.7" and "0.7.0" compare equal, and anything off this shape returns
+          # None, which the check below treats as "cannot prove newer: skip".
+          PRE_RANK = {"dev": 0, "a": 1, "b": 2, "rc": 3}
+
+          def ver_key(v):
+              m2 = re.fullmatch(
+                  r"(\d+(?:\.\d+)*)(?:\.?(dev|a|b|rc)(\d*))?(?:\.?post(\d*))?",
+                  v.replace("-", ".").replace("_", "."),
+              )
+              if not m2:
+                  return None
+              release = tuple(int(x) for x in m2.group(1).split("."))
+              while release and release[-1] == 0:
+                  release = release[:-1]
+              pre, post = m2.group(2), m2.group(4)
+              if pre is None:
+                  stage = (2 if post is not None else 1, 0, 0, int(post or 0))
+              else:
+                  stage = (0, PRE_RANK[pre], int(m2.group(3) or 0), int(post or 0))
+              return (release, stage)
+
+          t_key, c_key = ver_key(target_ver), ver_key(current_ver)
+          if t_key is not None and c_key is not None and t_key > c_key:
+              should_update = True
+          elif target_ver != current_ver:
+              # PyPI reports an older or non-comparable latest (e.g. after a
+              # yank): never downgrade or move sideways silently.
+              print(f"warning: target {target_ver} is not newer than formula {current_ver}; skipping")
+              should_update = False
+          else:
+              should_update = False
+
+          if force_update:
+              # Force covers validation runs and deliberate rollbacks.
+              should_update = True
+
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"should_update={should_update}\n")
+              f.write(f"should_update={'true' if should_update else 'false'}\n")
               f.write(f"current_version={current_ver}\n")
           EOF
 
@@ -156,6 +220,13 @@ jobs:
               count=1
           )
 
+          # Without this, a URL or sha line that drifts from the patterns above would
+          # leave the formula unchanged and the commit step would no-op "successfully".
+          if f'url "{new_url}"' not in content:
+              raise RuntimeError("Formula rewrite failed: new wheel URL not present after substitution")
+          if f'sha256 "{new_sha}"' not in content:
+              raise RuntimeError("Formula rewrite failed: new sha256 not present after substitution")
+
           with open("Formula/pxt.rb", "w") as f:
               f.write(content)
           EOF
@@ -171,15 +242,15 @@ jobs:
       - name: Prepare Python 3.12 Environment
         if: steps.check.outputs.should_update == 'true'
         run: |
-          brew install python@3.12 || true
-          brew link --overwrite python@3.12 || true
+          brew list --versions python@3.12 >/dev/null || brew install python@3.12
+          brew link --overwrite python@3.12
 
       - name: Validate & Test Updated Formula
         if: steps.check.outputs.should_update == 'true'
         run: |
           brew style pixeltable/tap
           brew livecheck pixeltable/tap/pxt
-          brew audit --tap pixeltable/tap pixeltable/tap/pxt
+          brew audit --tap pixeltable/tap
           brew install --verbose --build-from-source pixeltable/tap/pxt
           brew test pixeltable/tap/pxt
 
@@ -222,7 +293,7 @@ jobs:
 
       - name: Create Pull Request (Fallback)
         if: steps.check.outputs.should_update == 'true' && steps.push_step.outputs.pushed == 'false'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore(formula): bump pxt to ${{ steps.pypi.outputs.version }}"

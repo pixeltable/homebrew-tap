@@ -8,6 +8,7 @@ on:
 
 jobs:
   test-bot:
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:

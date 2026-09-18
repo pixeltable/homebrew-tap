@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Assert that every Mach-O library in the installed pxt keg carries a relocatable
-# install name.
+# install name, and that no load command references a foreign absolute path.
 #
 # Homebrew rewrites any absolute dylib ID to this keg's opt path. Vendored wheel
 # libraries ship IDs from the wheel builder's staging prefix (e.g. /DLC/libjpeg.9.dylib),
@@ -11,7 +11,10 @@
 #
 # Formula/pxt.rb normalises those IDs to @rpath during `install`. A dependency bump can
 # introduce a library the normalisation misses, so run this after `brew install` to catch
-# it in CI rather than in a user's terminal.
+# it in CI rather than in a user's terminal. The load-command pass covers the symmetric
+# case the ID pass cannot see: `otool -D` reports nothing for MH_BUNDLE extensions, but
+# a bundle can still carry an absolute LC_LOAD_DYLIB into the keg that Homebrew would
+# rewrite the same way.
 
 set -euo pipefail
 
@@ -32,6 +35,8 @@ fi
 checked=0
 bad=0
 
+brew_prefix="$(brew --prefix)"
+
 while IFS= read -r -d '' file
 do
   checked=$((checked + 1))
@@ -48,6 +53,24 @@ do
         ;;
     esac
   done < <(otool -D "${file}" 2>/dev/null | tail -n +2 | grep -v ':$' | grep -v '^[[:space:]]*$' || true)
+
+  # Load commands: flag any absolute reference that is not a system path and not
+  # already inside the Homebrew prefix (the opt-path form the relocator writes).
+  while IFS= read -r load_name
+  do
+    case "${load_name}" in
+      @* | /usr/lib/* | /System/* | "${brew_prefix}"/* | "")
+        continue
+        ;;
+      /*)
+        echo "non-relocatable load command: ${load_name}"
+        echo "                        in: ${file#"${libexec}"/}"
+        bad=$((bad + 1))
+        ;;
+      *)
+        ;;
+    esac
+  done < <(otool -L "${file}" 2>/dev/null | tail -n +2 | grep -v ':$' | grep -v '^[[:space:]]*$' | awk '{print $1}' || true)
 done < <(find "${libexec}" \( -name '*.dylib' -o -name '*.so' \) -type f -print0 || true)
 
 # A silent `find` failure would otherwise read as a clean pass.
@@ -63,10 +86,11 @@ if [[ "${bad}" -ne 0 ]]
 then
   cat >&2 <<'MSG'
 
-error: the install names above would be rewritten to long opt paths by Homebrew and
-overflow the Mach-O header. Widen the normalisation loop in Formula/pxt.rb to cover them.
+error: the names above would be rewritten to long opt paths by Homebrew and overflow
+the Mach-O header. Widen the normalisation in Formula/pxt.rb to cover them (-id for
+install names, -change for load commands).
 MSG
   exit 1
 fi
 
-echo "All install names are @rpath-relative or system Swift. Relocation is safe."
+echo "All install names and load commands are relocatable. Relocation is safe."

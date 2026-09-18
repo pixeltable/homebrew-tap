@@ -3,6 +3,7 @@
 Official Homebrew Tap for [Pixeltable](https://github.com/pixeltable/pixeltable) — the declarative multimodal AI data engine for tables, computed columns, embedding search, agents, and FastAPI microservices.
 
 [![CI Verification](https://github.com/pixeltable/homebrew-tap/actions/workflows/ci.yml/badge.svg)](https://github.com/pixeltable/homebrew-tap/actions/workflows/ci.yml)
+[![brew test-bot](https://github.com/pixeltable/homebrew-tap/actions/workflows/tests.yml/badge.svg)](https://github.com/pixeltable/homebrew-tap/actions/workflows/tests.yml)
 [![Update Formula](https://github.com/pixeltable/homebrew-tap/actions/workflows/update-formula.yml/badge.svg)](https://github.com/pixeltable/homebrew-tap/actions/workflows/update-formula.yml)
 [![PyPI version](https://img.shields.io/pypi/v/pixeltable.svg)](https://pypi.org/project/pixeltable/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -44,13 +45,12 @@ pxt --help
 
 ### Platform Support
 
-This tap targets **macOS only**, on both Apple Silicon and Intel. CI covers `macos-14`,
-`macos-15`, and `macos-15-intel`.
+This tap targets **macOS**, on both Apple Silicon and Intel. CI covers `macos-14`,
+`macos-15`, and `macos-15-intel`, plus a `brew test-bot` leg on Ubuntu.
 
-Homebrew exists on Linux, but the tap is not tested there and does not claim support. The
-problem this tap solves is PEP 668, which blocks `pip install` against a Homebrew Python on
-macOS. Linux, WSL, and Windows users have no such block and are better served by a Python
-tool runner:
+The formula does build and test on Linux in CI, but the problem this tap solves is
+PEP 668, which blocks `pip install` against a Homebrew Python on macOS. Linux, WSL,
+and Windows users have no such block and are better served by a Python tool runner:
 
 ```bash
 uv tool install "pixeltable[serve]"
@@ -109,8 +109,8 @@ pxt schema check app.py
 # Apply declarative schema updates
 pxt schema update app.py my_app
 
-# Run a local FastAPI microservice endpoint defined in your TableModel
-pxt service run app.py:my_service
+# Run the FastAPI services your TableModel file declares, in the background
+pxt service update app.py my_app
 ```
 
 ---

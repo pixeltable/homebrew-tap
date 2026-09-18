@@ -23,9 +23,9 @@ This document describes how formula updates are automated in `pixeltable/homebre
     ├─> Updates `Formula/pxt.rb` with new wheel URL and SHA-256
     │
     ├─> Validates:
-    │     • brew style Formula/pxt.rb
+    │     • brew style pixeltable/tap
     │     • brew livecheck pixeltable/tap/pxt
-    │     • brew audit --tap pixeltable/tap pixeltable/tap/pxt
+    │     • brew audit --tap pixeltable/tap
     │     • brew install --build-from-source pixeltable/tap/pxt
     │     • brew test pixeltable/tap/pxt
     │     • scripts/check-macho-install-names.sh
@@ -170,7 +170,7 @@ brew style pixeltable/tap
 brew livecheck pixeltable/tap/pxt
 
 # Audit the formula strictly
-brew audit --tap pixeltable/tap pixeltable/tap/pxt
+brew audit --tap pixeltable/tap
 
 # Install from source and run the formula integration tests
 brew install --build-from-source pixeltable/tap/pxt

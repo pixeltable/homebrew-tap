@@ -9,7 +9,6 @@ class Pxt < Formula
   url "https://files.pythonhosted.org/packages/72/b7/2280764e0f6f68964827a077850dce2f453da520c7ff1f948381d863e848/pixeltable-0.7.8-py3-none-any.whl"
   sha256 "4b6a4faf1e634a22e842da15802f768e9117dd1904a8b896b06f750232af4435"
   license "Apache-2.0"
-  head "https://github.com/pixeltable/pixeltable.git", branch: "main"
 
   livecheck do
     url "https://pypi.org/pypi/pixeltable/json"
@@ -62,8 +61,12 @@ class Pxt < Formula
         next if dylib_id.nil? || dylib_id.start_with?("@rpath", "/usr/lib/swift")
 
         chmod "u+w", file
-        quiet_system "/usr/bin/install_name_tool", "-id", "@rpath/#{file.basename}", file
-        quiet_system "/usr/bin/codesign", "-f", "-s", "-", file
+        unless quiet_system "/usr/bin/install_name_tool", "-id", "@rpath/#{file.basename}", file
+          odie "install_name_tool -id failed for #{file}"
+        end
+        unless quiet_system "/usr/bin/codesign", "-f", "-s", "-", file
+          odie "codesign failed for #{file}"
+        end
       end
     end
 
@@ -82,8 +85,8 @@ class Pxt < Formula
         pxt daemon stop
         pxt daemon restart
 
-      pxt runs from a virtualenv bound to this exact python@3.12 build. Upgrading
-      python@3.12, even by a patch release, moves that path and breaks pxt. Rebuild it:
+      pxt runs from a virtualenv bound to python@3.12. If pxt stops working after a
+      python@3.12 upgrade or reinstall, rebuild the environment:
         brew reinstall pixeltable/tap/pxt
 
       If you prefer running pxt via dedicated Python tool runners:
@@ -103,6 +106,10 @@ class Pxt < Formula
 
     system bin/"pxt", "init"
     assert_path_exists testpath/"pixeltable.toml"
+
+    # The [serve] extra is optional upstream but is what `pxt service` needs; the CLI
+    # checks above pass without it, so assert it actually landed in the virtualenv.
+    system libexec/"bin/python", "-c", "import fastapi, uvicorn"
 
     begin
       system bin/"pxt", "daemon", "start"
