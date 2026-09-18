@@ -45,12 +45,13 @@ pxt --help
 
 ### Platform Support
 
-This tap targets **macOS**, on both Apple Silicon and Intel. CI covers `macos-14`,
-`macos-15`, and `macos-15-intel`, plus a `brew test-bot` leg on Ubuntu.
+This tap targets **macOS only**, on both Apple Silicon and Intel. CI builds and tests
+the formula on `macos-14`, `macos-15`, and `macos-15-intel`. The `brew test-bot` leg on
+Ubuntu checks tap syntax only; the formula is not built there and Linux is not supported.
 
-The formula does build and test on Linux in CI, but the problem this tap solves is
-PEP 668, which blocks `pip install` against a Homebrew Python on macOS. Linux, WSL,
-and Windows users have no such block and are better served by a Python tool runner:
+The problem this tap solves is PEP 668, which blocks `pip install` against a Homebrew
+Python on macOS. Linux, WSL, and Windows users have no such block and are better served
+by a Python tool runner:
 
 ```bash
 uv tool install "pixeltable[serve]"
