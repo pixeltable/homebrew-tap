@@ -32,7 +32,12 @@ jobs:
 
       - name: Prepare Python 3.12 Environment
         run: |
-          brew list --versions python@3.12 >/dev/null || brew install python@3.12
+          # `brew install` exits 1 when its own link phase meets the macos-15-intel
+          # image's python.org framework symlinks in /usr/local/bin, even though the
+          # keg poured fine. The --overwrite link below deletes those foreign links
+          # and finishes the setup; if install failed for a real reason there is no
+          # keg and the strict link still fails the step.
+          brew list --versions python@3.12 >/dev/null || brew install python@3.12 || true
           brew link --overwrite python@3.12
 
       # Style the tap, not just the formula: this also runs shellcheck and shfmt over
