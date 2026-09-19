@@ -12,17 +12,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Bottle builders only. Two legs were removed after PR #9, the first formula
+        # Bottle builder only. Three legs were removed after PR #9, the first formula
         # change to reach `--only-formulae`, showed what they actually do:
-        #   macos-14:      test-bot skips pxt outright ("dependencies without compatible
+        #   macos-14, macos-15-intel:
+        #                  test-bot skips pxt outright ("dependencies without compatible
         #                  bottles: python@3.12"); homebrew-core no longer bottles
-        #                  python@3.12 for Sonoma. A permanent green no-op. ci.yml still
-        #                  builds and tests on macos-14 for real.
+        #                  python@3.12 for Sonoma or for Intel Sequoia. Permanent green
+        #                  no-ops. ci.yml still builds and tests both for real.
         #   ubuntu-latest: the formula installs, then `brew bottle` fails inside patchelf
         #                  ("No PT_LOAD found covers offset") rewriting a vendored ELF,
         #                  and `brew linkage --test` rejects the vendored PostgreSQL and
         #                  wheel binaries. Linux is unsupported; see README.
-        os: [ macos-15-intel, macos-15 ]
+        # Consequence: bottles are only possible for arm64 Sequoia (and newer) until
+        # this tap also bottles python@3.12 itself.
+        os: [ macos-15 ]
     runs-on: ${{ matrix.os }}
     permissions:
       actions: read
