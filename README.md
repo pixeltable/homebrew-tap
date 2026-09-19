@@ -46,8 +46,9 @@ pxt --help
 ### Platform Support
 
 This tap targets **macOS only**, on both Apple Silicon and Intel. CI builds and tests
-the formula on `macos-14`, `macos-15`, and `macos-15-intel`. The `brew test-bot` leg on
-Ubuntu checks tap syntax only; the formula is not built there and Linux is not supported.
+the formula on `macos-14`, `macos-15`, and `macos-15-intel`. Linux is not supported: the
+formula does install under Homebrew on Linux, but Homebrew cannot bottle or pass its
+linkage checks on the vendored PostgreSQL and wheel binaries, so it is not tested there.
 
 The problem this tap solves is PEP 668, which blocks `pip install` against a Homebrew
 Python on macOS. Linux, WSL, and Windows users have no such block and are better served
