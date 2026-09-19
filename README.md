@@ -134,6 +134,11 @@ pxt-pip install scenedetect   # pxt.functions.video scene detection
 
 Missing a package? The error message names it: install it with `pxt-pip install <name>`.
 
+`pxt-pip` can also upgrade or replace packages the formula itself installed, when a
+new package requires it. That is what makes installs reliable, and it also means you
+can break `pxt` by pinning something incompatible. `brew reinstall pixeltable/tap/pxt`
+resets the environment to what the formula ships.
+
 Extras live inside the formula's keg, so `brew reinstall` or an upgrade removes
 them. Re-run `pxt-pip install` afterwards.
 
