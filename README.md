@@ -46,8 +46,9 @@ pxt --help
 ### Platform Support
 
 This tap targets **macOS only**, on both Apple Silicon and Intel. CI builds and tests
-the formula on `macos-14`, `macos-15`, and `macos-15-intel`. The `brew test-bot` leg on
-Ubuntu checks tap syntax only; the formula is not built there and Linux is not supported.
+the formula on `macos-14`, `macos-15`, and `macos-15-intel`. Linux is not supported: the
+formula does install under Homebrew on Linux, but Homebrew cannot bottle or pass its
+linkage checks on the vendored PostgreSQL and wheel binaries, so it is not tested there.
 
 The problem this tap solves is PEP 668, which blocks `pip install` against a Homebrew
 Python on macOS. Linux, WSL, and Windows users have no such block and are better served
@@ -133,6 +134,11 @@ pxt-pip install scenedetect   # pxt.functions.video scene detection
 ```
 
 Missing a package? The error message names it: install it with `pxt-pip install <name>`.
+
+`pxt-pip` can also upgrade or replace packages the formula itself installed, when a
+new package requires it. That is what makes installs reliable, and it also means you
+can break `pxt` by pinning something incompatible. `brew reinstall pixeltable/tap/pxt`
+resets the environment to what the formula ships.
 
 Extras live inside the formula's keg, so `brew reinstall` or an upgrade removes
 them. Re-run `pxt-pip install` afterwards.

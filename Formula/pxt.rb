@@ -23,6 +23,23 @@ class Pxt < Formula
   # relocator to leave those IDs alone instead of expanding them back to opt paths.
   preserve_rpath
 
+  # Homebrew's cleaner deletes every dist-info RECORD and stamps INSTALLER=brew so pip
+  # cannot touch keg-managed packages. pxt-pip exists precisely so users can add
+  # packages to this virtualenv, and without RECORD pip aborts any install that must
+  # upgrade or replace one of the ~90 packages the formula ships
+  # ("uninstall-no-record-file"). Keep pip's metadata for the whole site dir.
+  #
+  # The `skip_clean` DSL is not enough: the cleaner walks `prefix.realpath`, but
+  # `skip_clean?` compares `relative_path_from(prefix)`, and once the keg is opt-linked
+  # (every `brew reinstall`) `prefix` is the opt symlink, so the relative path starts
+  # with `../` and never matches. Compare real paths so it holds on reinstall too.
+  def skip_clean?(path)
+    site_packages = prefix.realpath/"libexec/lib/python3.12/site-packages"
+    return true if path.realpath.to_s.start_with?(site_packages.to_s)
+
+    super
+  end
+
   def install
     virtualenv_create(libexec, "python3.12")
 
@@ -105,8 +122,10 @@ class Pxt < Formula
         pxt-pip install scenedetect   # pxt.functions.video scene detection
       spaCy also needs a language model, e.g.:
         #{opt_libexec}/bin/python -m spacy download en_core_web_sm
-      Extras land inside the formula's keg, so `brew reinstall` or an upgrade
-      removes them; re-run `pxt-pip install` afterwards.
+      pxt-pip can also upgrade or replace packages the formula installed. If pxt
+      stops working after such a change, `brew reinstall pixeltable/tap/pxt` resets
+      the environment. Extras land inside the formula's keg, so `brew reinstall` or
+      an upgrade removes them; re-run `pxt-pip install` afterwards.
 
       If you prefer running pxt via dedicated Python tool runners:
         uv tool install "pixeltable[serve]"
@@ -133,6 +152,12 @@ class Pxt < Formula
     # Optional-package installs are documented via the generated shim; it must exec
     # the keg's virtualenv python through the stable opt path.
     assert_match "pip", shell_output("#{bin}/pxt-pip --version")
+
+    # pxt-pip can only upgrade or replace formula-installed packages if their pip
+    # RECORD survived Homebrew's cleaner (see skip_clean? above).
+    site_packages = libexec/"lib/python3.12/site-packages"
+    dist_info = Pathname(Dir[site_packages/"pixeltable-*.dist-info"].first)
+    assert_path_exists dist_info/"RECORD"
 
     begin
       system bin/"pxt", "daemon", "start"

@@ -12,12 +12,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ macos-15-intel, macos-14, macos-15 ]
-        include:
-          - os: ubuntu-latest
-            container: ghcr.io/homebrew/brew:main
+        # Bottle builder only. Three legs were removed after PR #9, the first formula
+        # change to reach `--only-formulae`, showed what they actually do:
+        #   macos-14, macos-15-intel:
+        #                  test-bot skips pxt outright ("dependencies without compatible
+        #                  bottles: python@3.12"); homebrew-core no longer bottles
+        #                  python@3.12 for Sonoma or for Intel Sequoia. Permanent green
+        #                  no-ops. ci.yml still builds and tests both for real.
+        #   ubuntu-latest: the formula installs, then `brew bottle` fails inside patchelf
+        #                  ("No PT_LOAD found covers offset") rewriting a vendored ELF,
+        #                  and `brew linkage --test` rejects the vendored PostgreSQL and
+        #                  wheel binaries. Linux is unsupported; see README.
+        # Consequence: bottles are only possible for arm64 Sequoia (and newer) until
+        # this tap also bottles python@3.12 itself.
+        os: [ macos-15 ]
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
     permissions:
       actions: read
       checks: read
@@ -42,16 +51,13 @@ jobs:
       - run: brew test-bot --only-setup
 
       - run: brew test-bot --only-tap-syntax
-      # Ungated so it also runs on push to main, but be aware of what it does NOT do:
-      # `detect_formulae!` diffs HEAD against origin/main, and on a push to main those
-      # are the same commit, so nothing is ever detected and no formula is built or
-      # bottled. It has never built pxt on any platform or produced a bottle artifact.
-      # To get real four-platform build and bottle coverage, name the formula so
-      # detection is bypassed: `brew test-bot --only-formulae pixeltable/tap/pxt`.
-      # That is deliberately not done here: it would add ~10 minutes to every push to
-      # cover Linux, which this tap does not support, and bottles, which are not
-      # shipped. Formula builds are covered by ci.yml and by update-formula.yml before
-      # it commits. Turn it on when Phase 2 bottling starts.
+      # On a pull request that changes Formula/pxt.rb, `detect_formulae!` finds it and
+      # this step builds, tests and bottles it (bottles upload as artifacts below). On
+      # a push to main it detects nothing: it diffs HEAD against origin/main, which are
+      # the same commit. So automated bumps pushed straight to main are covered by
+      # ci.yml and by update-formula.yml's own build, not by this step. To force a
+      # build regardless of detection, name the formula:
+      #   brew test-bot --only-formulae pixeltable/tap/pxt
       - run: brew test-bot --only-formulae
 
       - name: Upload bottles as artifact
