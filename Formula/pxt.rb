@@ -6,8 +6,8 @@ class Pxt < Formula
 
   desc "Declarative AI data infrastructure and application framework CLI"
   homepage "https://pixeltable.com"
-  url "https://files.pythonhosted.org/packages/7c/88/8b641bebc2f4a8ea6df23739569626e4fc97544c7adb13772de556fa1159/pixeltable-0.7.18-py3-none-any.whl"
-  sha256 "8cb218af23bf9c3d9711906f59acd65749b8ad2f8a63cf386434d05426ae9c86"
+  url "https://files.pythonhosted.org/packages/d9/70/a6653f44633a403233bdbac1c48aee0a127046fce985c1d4300a395a5efd/pixeltable-0.7.19-py3-none-any.whl"
+  sha256 "6ab85e5a8fd60b1ce737975eba06d6bb3dc794be817d1a2337848c7e814a1195"
   license "Apache-2.0"
 
   livecheck do
